@@ -2,20 +2,53 @@
 	import { imageState } from '../lib/image-state.svelte';
 	import { onMount } from 'svelte';
 	import { WebGLRenderer } from '../lib/renderer/webgl-renderer';
+	import { PanZoomController } from '../lib/renderer/pan-zoom';
+	import { exportImage } from '../lib/exporter/exporter';
+	import type { ExportOptions } from '../lib/types';
 
 	let containerEl: HTMLDivElement;
 	let canvasEl: HTMLCanvasElement;
 	let renderer: WebGLRenderer | null = null;
+	let panZoom: PanZoomController | null = null;
+
+	// Track whether image has been uploaded (avoid re-uploading on every adjustment)
+	let uploadedImageRef: unknown = null;
 
 	onMount(() => {
 		renderer = new WebGLRenderer(canvasEl);
+		panZoom = new PanZoomController(canvasEl, renderer);
+
+		panZoom.onRender(() => {
+			if (renderer && imageState.rawImage) {
+				renderer.render(imageState.adjustments, imageState.toneCurve);
+			}
+		});
+
 		resizeCanvas();
 
-		const observer = new ResizeObserver(() => resizeCanvas());
+		const observer = new ResizeObserver(() => {
+			resizeCanvas();
+			if (renderer && imageState.rawImage) {
+				renderer.render(imageState.adjustments, imageState.toneCurve);
+			}
+		});
 		observer.observe(containerEl);
 
+		// Listen for export events from App
+		function handleExport(e: Event) {
+			if (!renderer) return;
+			const options = (e as CustomEvent<ExportOptions>).detail;
+			exportImage(renderer, options).catch(err => {
+				console.error('Export failed:', err);
+				alert(`Export failed: ${err instanceof Error ? err.message : err}`);
+			});
+		}
+		window.addEventListener('export-image', handleExport);
+
 		return () => {
+			window.removeEventListener('export-image', handleExport);
 			observer.disconnect();
+			panZoom?.dispose();
 			renderer?.dispose();
 		};
 	});
@@ -30,16 +63,23 @@
 		renderer?.setViewport(canvasEl.width, canvasEl.height);
 	}
 
-	// Re-render when image data or adjustments change
+	// Upload image when rawImage changes
 	$effect(() => {
 		if (!renderer) return;
 		const img = imageState.rawImage;
+		if (img && img !== uploadedImageRef) {
+			renderer.uploadImage(img);
+			uploadedImageRef = img;
+			panZoom?.resetView();
+		}
+	});
+
+	// Re-render when adjustments or tone curve change
+	$effect(() => {
+		if (!renderer || !imageState.rawImage) return;
 		const adj = imageState.adjustments;
 		const curve = imageState.toneCurve;
-		if (img) {
-			renderer.uploadImage(img);
-			renderer.render(adj, curve);
-		}
+		renderer.render(adj, curve);
 	});
 </script>
 
@@ -50,7 +90,7 @@
 			<p class="hint">Supports CR2, NEF, ARW, DNG, and more</p>
 		</div>
 	{/if}
-	<canvas bind:this={canvasEl}></canvas>
+	<canvas bind:this={canvasEl} class:has-image={imageState.rawImage}></canvas>
 </div>
 
 <style>
@@ -65,6 +105,14 @@
 		position: absolute;
 		top: 0;
 		left: 0;
+	}
+
+	canvas.has-image {
+		cursor: grab;
+	}
+
+	canvas.has-image:active {
+		cursor: grabbing;
 	}
 
 	.empty-state {

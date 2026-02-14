@@ -2,6 +2,13 @@
 	import { imageState } from '../lib/image-state.svelte';
 	import { decodeRawFile } from '../lib/raw-decoder/decoder';
 
+	interface Props {
+		onexport: () => void;
+		oninfo: () => void;
+	}
+
+	let { onexport, oninfo }: Props = $props();
+
 	let fileInput: HTMLInputElement;
 
 	function openFile() {
@@ -29,15 +36,39 @@
 		}
 	}
 
-	function exportImage() {
-		// Will be implemented in Phase 4
+	// Handle drag & drop
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+		e.dataTransfer!.dropEffect = 'copy';
+	}
+
+	async function handleDrop(e: DragEvent) {
+		e.preventDefault();
+		const file = e.dataTransfer?.files?.[0];
+		if (!file) return;
+
+		imageState.loading = true;
+		imageState.filename = file.name;
+		try {
+			const buffer = await file.arrayBuffer();
+			const result = await decodeRawFile(buffer);
+			imageState.rawImage = result.image;
+			imageState.metadata = result.metadata;
+		} catch (err) {
+			console.error('Failed to decode RAW file:', err);
+			alert(`Failed to decode file: ${err instanceof Error ? err.message : err}`);
+		} finally {
+			imageState.loading = false;
+		}
 	}
 </script>
 
+<svelte:window ondragover={handleDragOver} ondrop={handleDrop} />
+
 <header class="toolbar">
 	<div class="toolbar-left">
-		<button onclick={openFile}>Open</button>
-		<button onclick={exportImage} disabled={!imageState.rawImage}>Export</button>
+		<button class="open-btn" onclick={openFile}>Open</button>
+		<button onclick={onexport} disabled={!imageState.rawImage}>Export</button>
 		<input
 			bind:this={fileInput}
 			type="file"
@@ -56,6 +87,7 @@
 		{#if imageState.loading}
 			<span class="loading">Loading...</span>
 		{/if}
+		<button onclick={oninfo} disabled={!imageState.rawImage}>Info</button>
 	</div>
 </header>
 
@@ -96,6 +128,7 @@
 	.toolbar-right {
 		display: flex;
 		align-items: center;
+		gap: 6px;
 	}
 
 	.loading {
