@@ -32,8 +32,10 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div class="overlay" onkeydown={handleKeydown} onclick={onclose}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div class="dialog" onclick={(e: MouseEvent) => e.stopPropagation()}>
 		<h3>Export Image</h3>
 
@@ -60,6 +62,7 @@
 		{/if}
 
 		<div class="field">
+			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label>Output filename</label>
 			<span class="filename-preview">{baseName(filename)}.{format === 'jpeg' ? 'jpg' : format}</span>
 		</div>
