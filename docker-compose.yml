@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace/backend
+    volumes:
+      - .:/workspace
+      - rawviewer_go_mod:/go/pkg/mod
+    environment:
+      - RAWVIEWER_API_ADDR=:8080
+    command: >
+      sh -c "go mod tidy &&
+      air -c .air.toml 2>&1 | tee -a /tmp/rawviewer-backend.log"
+    ports:
+      - "${RAWVIEWER_HOST_API_PORT:-8080}:8080"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - rawviewer_node_modules:/workspace/node_modules
+    environment:
+      - VITE_API_PROXY_TARGET=http://backend:8080
+    command: >
+      sh -c "npm install &&
+      npm run dev -- --host 0.0.0.0 --port 5173 2>&1 | tee -a /tmp/rawviewer-frontend.log"
+    ports:
+      - "${RAWVIEWER_HOST_WEB_PORT:-5173}:5173"
+    depends_on:
+      - backend
+
+volumes:
+  rawviewer_go_mod:
+  rawviewer_node_modules:

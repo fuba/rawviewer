@@ -17,7 +17,7 @@ export function exportTiff(
 	}
 
 	// UTIF.encodeImage expects RGBA data
-	const ifd: UTIF.IFD = {
+	const ifd = {
 		t256: [width],       // ImageWidth
 		t257: [height],      // ImageLength
 		t258: [8, 8, 8, 8],  // BitsPerSample (RGBA)
@@ -31,8 +31,8 @@ export function exportTiff(
 		t283: [72],          // YResolution
 		t296: [2],           // ResolutionUnit: inch
 		t338: [2],           // ExtraSamples: unassociated alpha
-	};
+	} as unknown as UTIF.IFD;
 
-	const encoded = UTIF.encodeImage(flipped.buffer, width, height, ifd);
+	const encoded = UTIF.encodeImage(flipped, width, height, ifd);
 	return new Blob([encoded], { type: 'image/tiff' });
 }

@@ -61,8 +61,7 @@
 
 	function handleMouseDown(e: MouseEvent, idx: number) {
 		e.preventDefault();
-		// Don't allow dragging endpoints
-		if (idx === 0 || idx === getPoints().length - 1) return;
+		e.stopPropagation();
 		draggingIdx = idx;
 	}
 
@@ -71,7 +70,20 @@
 		const { x, y } = getSvgCoords(e);
 		const pt = fromSvg(x, y);
 		const points = [...getPoints()];
-		points[draggingIdx] = pt;
+		const isFirst = draggingIdx === 0;
+		const isLast = draggingIdx === points.length - 1;
+
+		if (isFirst || isLast) {
+			// Keep endpoint x fixed, allow vertical movement.
+			points[draggingIdx] = { x: points[draggingIdx].x, y: pt.y };
+		} else {
+			const minX = points[draggingIdx - 1].x + 0.001;
+			const maxX = points[draggingIdx + 1].x - 0.001;
+			points[draggingIdx] = {
+				x: Math.max(minX, Math.min(maxX, pt.x)),
+				y: pt.y,
+			};
+		}
 		setPoints(points);
 	}
 
@@ -88,6 +100,22 @@
 		if (insertIdx === -1) insertIdx = points.length;
 		points.splice(insertIdx, 0, pt);
 		setPoints(points);
+	}
+
+	function handleSvgMouseDown(e: MouseEvent) {
+		if (e.button !== 0) return;
+		const target = e.target as Element;
+		if (target instanceof SVGCircleElement) return;
+
+		const { x, y } = getSvgCoords(e);
+		const pt = fromSvg(x, y);
+		const points = [...getPoints()];
+		let insertIdx = points.findIndex(p => p.x > pt.x);
+		if (insertIdx === -1) insertIdx = points.length;
+		points.splice(insertIdx, 0, pt);
+		setPoints(points);
+		draggingIdx = insertIdx;
+		e.preventDefault();
 	}
 
 	function handleRightClick(e: MouseEvent, idx: number) {
@@ -111,6 +139,8 @@
 	];
 </script>
 
+<svelte:window onmouseup={handleMouseUp} />
+
 <div class="curve-editor">
 	<div class="curve-header">
 		<span>Tone Curve</span>
@@ -132,6 +162,7 @@
 		bind:this={svgEl}
 		viewBox="0 0 {svgSize} {svgSize}"
 		class="curve-svg"
+		onmousedown={handleSvgMouseDown}
 		onmousemove={handleMouseMove}
 		onmouseup={handleMouseUp}
 		onmouseleave={handleMouseUp}

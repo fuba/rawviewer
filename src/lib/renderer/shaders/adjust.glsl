@@ -22,6 +22,45 @@ uniform float u_vibrance;      // -100 to +100
 // Image dimensions for sharpening
 uniform vec2 u_texelSize;      // 1.0 / image dimensions
 uniform float u_sharpness;     // 0 to 100
+uniform vec2 u_imageSize;      // source image dimensions in pixels
+
+// Transform params
+uniform float u_rotationRad;
+uniform vec2 u_cropOffset;
+uniform vec2 u_cropScale;
+uniform int u_cropEnabled;
+
+vec2 mapDisplayToSource(vec2 uvDisplay) {
+    vec2 uv = uvDisplay;
+    if (u_cropEnabled == 1) {
+        uv = u_cropOffset + uv * u_cropScale;
+    }
+
+    // Inverse-map from rotated bounds space back to source space.
+    float sw = u_imageSize.x;
+    float sh = u_imageSize.y;
+    float c = cos(u_rotationRad);
+    float s = sin(u_rotationRad);
+    float rw = abs(c) * sw + abs(s) * sh;
+    float rh = abs(s) * sw + abs(c) * sh;
+
+    vec2 p = (uv - vec2(0.5)) * vec2(rw, rh);
+    vec2 src = vec2(
+        c * p.x + s * p.y,
+        -s * p.x + c * p.y
+    );
+    return src / vec2(sw, sh) + vec2(0.5);
+}
+
+bool isInBounds(vec2 uv) {
+    return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
+}
+
+vec3 sampleImageMapped(vec2 uvDisplay) {
+    vec2 uv = mapDisplayToSource(uvDisplay);
+    if (!isInBounds(uv)) return vec3(0.0);
+    return texture(u_image, uv).rgb;
+}
 
 // sRGB <-> Linear conversions
 vec3 srgbToLinear(vec3 c) {
@@ -119,11 +158,11 @@ vec3 applySharpen(vec3 c, vec2 texCoord, float amount) {
     if (amount < 0.5) return c;
     float strength = amount / 100.0 * 2.0;
 
-    // 3x3 box blur as approximation
+    // 3x3 box blur as approximation in display UV space.
     vec3 blur = vec3(0.0);
     for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
-            blur += texture(u_image, texCoord + vec2(float(x), float(y)) * u_texelSize).rgb;
+            blur += sampleImageMapped(texCoord + vec2(float(x), float(y)) * u_texelSize);
         }
     }
     blur /= 9.0;
@@ -148,7 +187,13 @@ vec3 applyToneCurve(vec3 c, sampler2D lut) {
 }
 
 void main() {
-    vec3 color = texture(u_image, vTexCoord).rgb;
+    vec2 sourceUv = mapDisplayToSource(vTexCoord);
+    if (!isInBounds(sourceUv)) {
+        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    vec3 color = texture(u_image, sourceUv).rgb;
 
     // Convert 16-bit linear data to working space
     // (libraw outputs linear light when no gamma is applied)

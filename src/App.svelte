@@ -41,7 +41,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="app-layout">
+<div class="app-layout" class:canvas-fallback={imageState.renderBackend === 'canvas2d'}>
 	<Toolbar
 		onexport={() => showExportDialog = true}
 		oninfo={() => showMetadata = !showMetadata}
@@ -82,6 +82,17 @@
 		flex-direction: column;
 		width: 100%;
 		height: 100%;
+	}
+
+	.app-layout.canvas-fallback {
+		--accent: #ff6363;
+		--accent-hover: #ff7a7a;
+		box-shadow: inset 0 0 0 2px rgba(255, 90, 90, 0.65);
+	}
+
+	.app-layout.canvas-fallback :global(.toolbar) {
+		background: linear-gradient(90deg, #341b1b 0%, #2b1a1a 100%);
+		border-bottom-color: rgba(255, 90, 90, 0.7);
 	}
 
 	.main-area {

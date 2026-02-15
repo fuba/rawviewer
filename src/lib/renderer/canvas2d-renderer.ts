@@ -1,5 +1,7 @@
-import type { RawImageData, AdjustmentParams, ToneCurve, CurvePoint } from '../types';
+import type { RawImageData, AdjustmentParams, ToneCurve, CurvePoint, TransformParams } from '../types';
 import type { IRenderer } from './renderer-interface';
+import { toRgba8 } from './pixel-convert';
+import { getRotatedBounds } from '../transform/geometry';
 
 /**
  * Canvas 2D fallback renderer for environments without WebGL 2.
@@ -34,15 +36,14 @@ export class Canvas2DRenderer implements IRenderer {
 		// Pre-convert to normalized float [0,1] RGB
 		const count = image.width * image.height;
 		this.srcPixels = new Float32Array(count * 3);
-		const src = image.data;
-		const scale = image.bitsPerSample === 16 ? 1 / 65535 : 1 / 255;
+		const rgba = toRgba8(image);
 
 		for (let i = 0; i < count; i++) {
-			const si = i * image.channels;
+			const si = i * 4;
 			const di = i * 3;
-			this.srcPixels[di] = src[si] * scale;
-			this.srcPixels[di + 1] = src[si + 1] * scale;
-			this.srcPixels[di + 2] = src[si + 2] * scale;
+			this.srcPixels[di] = rgba[si] / 255;
+			this.srcPixels[di + 1] = rgba[si + 1] / 255;
+			this.srcPixels[di + 2] = rgba[si + 2] / 255;
 		}
 
 		this.panX = 0;
@@ -50,7 +51,7 @@ export class Canvas2DRenderer implements IRenderer {
 		this.zoom = 1;
 	}
 
-	render(params: AdjustmentParams, curve: ToneCurve) {
+	render(params: AdjustmentParams, curve: ToneCurve, transform: TransformParams) {
 		if (!this.imageData || !this.srcPixels) return;
 
 		const img = this.imageData;
@@ -178,31 +179,60 @@ export class Canvas2DRenderer implements IRenderer {
 			dst[di + 3] = 255;
 		}
 
-		// Draw the image with pan/zoom
-		this.ctx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
-
 		// Create a temporary canvas at image resolution
 		const tmpCanvas = new OffscreenCanvas(w, h);
 		const tmpCtx = tmpCanvas.getContext('2d')!;
 		tmpCtx.putImageData(out, 0, 0);
 
+		// Rotate to an intermediate surface so crop works in rotated space.
+		const rotated = getRotatedBounds(w, h, transform.rotationDeg);
+		const rw = Math.max(1, Math.round(rotated.width));
+		const rh = Math.max(1, Math.round(rotated.height));
+		const rotCanvas = new OffscreenCanvas(rw, rh);
+		const rotCtx = rotCanvas.getContext('2d')!;
+		rotCtx.translate(rw / 2, rh / 2);
+		rotCtx.rotate((transform.rotationDeg * Math.PI) / 180);
+		rotCtx.drawImage(tmpCanvas, -w / 2, -h / 2, w, h);
+
+		let srcX = 0;
+		let srcY = 0;
+		let srcW = rw;
+		let srcH = rh;
+		if (transform.cropApplied && transform.cropRect) {
+			srcX = Math.max(0, Math.floor(transform.cropRect.x * rw));
+			srcY = Math.max(0, Math.floor(transform.cropRect.y * rh));
+			srcW = Math.max(1, Math.floor(transform.cropRect.width * rw));
+			srcH = Math.max(1, Math.floor(transform.cropRect.height * rh));
+			if (srcX + srcW > rw) srcW = rw - srcX;
+			if (srcY + srcH > rh) srcH = rh - srcY;
+			srcW = Math.max(1, srcW);
+			srcH = Math.max(1, srcH);
+		}
+
+		// Draw the image with pan/zoom
+		this.ctx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
+
 		// Calculate fit-to-viewport scale
 		const aspectViewport = this.viewportWidth / this.viewportHeight;
-		const aspectImage = w / h;
+		const aspectImage = srcW / srcH;
 		let fitScale: number;
 		if (aspectImage > aspectViewport) {
-			fitScale = this.viewportWidth / w;
+			fitScale = this.viewportWidth / srcW;
 		} else {
-			fitScale = this.viewportHeight / h;
+			fitScale = this.viewportHeight / srcH;
 		}
 
 		const scale = fitScale * this.zoom;
-		const drawW = w * scale;
-		const drawH = h * scale;
+		const drawW = srcW * scale;
+		const drawH = srcH * scale;
 		const cx = this.viewportWidth / 2 + this.panX * this.viewportWidth / 2;
 		const cy = this.viewportHeight / 2 - this.panY * this.viewportHeight / 2;
 
-		this.ctx.drawImage(tmpCanvas, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+		this.ctx.drawImage(
+			rotCanvas as unknown as CanvasImageSource,
+			srcX, srcY, srcW, srcH,
+			cx - drawW / 2, cy - drawH / 2, drawW, drawH
+		);
 	}
 
 	setViewport(width: number, height: number) {

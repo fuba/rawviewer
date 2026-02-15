@@ -22,7 +22,7 @@ out vec2 vTexCoord;
 uniform vec2 u_pan;
 uniform float u_zoom;
 uniform vec2 u_viewportSize;
-uniform vec2 u_imageSize;
+uniform float u_displayAspect;
 
 void main() {
     vec2 pos = positions[gl_VertexID];
@@ -30,7 +30,7 @@ void main() {
 
     // Apply pan and zoom transform
     float aspect_viewport = u_viewportSize.x / u_viewportSize.y;
-    float aspect_image = u_imageSize.x / u_imageSize.y;
+    float aspect_image = u_displayAspect;
 
     vec2 scale;
     if (aspect_image > aspect_viewport) {

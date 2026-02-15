@@ -36,6 +36,22 @@ export interface AdjustmentParams {
 	sharpness: number;      // range: 0 to 100, default: 0
 }
 
+export interface CropRect {
+	x: number;      // 0-1
+	y: number;      // 0-1
+	width: number;  // 0-1
+	height: number; // 0-1
+}
+
+export type CropAspectPreset = 'free' | '1:1' | '4:3' | '3:2' | '16:9';
+
+export interface TransformParams {
+	rotationDeg: number;
+	cropRect: CropRect | null;
+	cropApplied: boolean;
+	cropAspectPreset: CropAspectPreset;
+}
+
 // Tone curve control point
 export interface CurvePoint {
 	x: number; // 0-1
@@ -57,7 +73,14 @@ export interface ExportOptions {
 	format: ExportFormat;
 	quality: number;   // 0-100 (JPEG only)
 	filename: string;
+	targetWidth: number;
+	targetHeight: number;
+	upscale: boolean;
 }
+
+export type RenderBackend = 'webgl' | 'canvas2d' | null;
+
+export type TaskKind = 'open' | 'export' | null;
 
 // Decode worker messages
 export interface DecodeRequest {
@@ -96,6 +119,15 @@ export function defaultAdjustments(): AdjustmentParams {
 		saturation: 0,
 		vibrance: 0,
 		sharpness: 0,
+	};
+}
+
+export function defaultTransform(): TransformParams {
+	return {
+		rotationDeg: 0,
+		cropRect: null,
+		cropApplied: false,
+		cropAspectPreset: 'free',
 	};
 }
 

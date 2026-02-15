@@ -1,7 +1,9 @@
-import type { RawImageData, AdjustmentParams, ToneCurve, CurvePoint } from '../types';
+import type { RawImageData, AdjustmentParams, ToneCurve, CurvePoint, TransformParams } from '../types';
 import type { IRenderer } from './renderer-interface';
 import vertexSrc from './shaders/vertex.glsl?raw';
 import fragmentSrc from './shaders/adjust.glsl?raw';
+import { toRgba8 } from './pixel-convert';
+import { getEffectiveAspect } from '../transform/geometry';
 
 export class WebGLRenderer implements IRenderer {
 	private gl: WebGL2RenderingContext;
@@ -26,6 +28,7 @@ export class WebGLRenderer implements IRenderer {
 
 	// Whether image has been uploaded
 	private hasImage = false;
+	private lastCurveSignature = '';
 
 	constructor(canvas: HTMLCanvasElement) {
 		const gl = canvas.getContext('webgl2', {
@@ -68,7 +71,8 @@ export class WebGLRenderer implements IRenderer {
 			'u_contrast', 'u_highlights', 'u_shadows',
 			'u_whites', 'u_blacks', 'u_saturation', 'u_vibrance',
 			'u_sharpness', 'u_texelSize',
-			'u_pan', 'u_zoom', 'u_viewportSize', 'u_imageSize',
+			'u_pan', 'u_zoom', 'u_viewportSize', 'u_imageSize', 'u_displayAspect',
+			'u_rotationRad', 'u_cropOffset', 'u_cropScale', 'u_cropEnabled',
 		];
 		for (const name of uniformNames) {
 			this.uniforms[name] = gl.getUniformLocation(this.program, name);
@@ -127,49 +131,13 @@ export class WebGLRenderer implements IRenderer {
 
 		gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
 
-		if (image.bitsPerSample === 16) {
-			// 16-bit data: upload as RGBA16F for full precision
-			// Input is RGB (3 channels), we need to pad to RGBA for WebGL
-			const src = image.data as Uint16Array;
-			const pixelCount = image.width * image.height;
-			const rgba = new Float32Array(pixelCount * 4);
-
-			for (let i = 0; i < pixelCount; i++) {
-				const srcIdx = i * image.channels;
-				const dstIdx = i * 4;
-				// Normalize 16-bit [0, 65535] to [0, 1]
-				rgba[dstIdx] = src[srcIdx] / 65535;
-				rgba[dstIdx + 1] = src[srcIdx + 1] / 65535;
-				rgba[dstIdx + 2] = src[srcIdx + 2] / 65535;
-				rgba[dstIdx + 3] = 1.0;
-			}
-
-			gl.texImage2D(
-				gl.TEXTURE_2D, 0, gl.RGBA16F,
-				image.width, image.height, 0,
-				gl.RGBA, gl.FLOAT, rgba
-			);
-		} else {
-			// 8-bit data
-			const src = image.data as Uint8Array;
-			const pixelCount = image.width * image.height;
-			const rgba = new Uint8Array(pixelCount * 4);
-
-			for (let i = 0; i < pixelCount; i++) {
-				const srcIdx = i * image.channels;
-				const dstIdx = i * 4;
-				rgba[dstIdx] = src[srcIdx];
-				rgba[dstIdx + 1] = src[srcIdx + 1];
-				rgba[dstIdx + 2] = src[srcIdx + 2];
-				rgba[dstIdx + 3] = 255;
-			}
-
-			gl.texImage2D(
-				gl.TEXTURE_2D, 0, gl.RGBA8,
-				image.width, image.height, 0,
-				gl.RGBA, gl.UNSIGNED_BYTE, rgba
-			);
-		}
+		// Upload normalized RGBA8 to avoid large 16-bit float allocations on huge RAW files.
+		const rgba = toRgba8(image);
+		gl.texImage2D(
+			gl.TEXTURE_2D, 0, gl.RGBA8,
+			image.width, image.height, 0,
+			gl.RGBA, gl.UNSIGNED_BYTE, rgba
+		);
 
 		this.hasImage = true;
 		// Reset pan/zoom when loading new image
@@ -183,6 +151,10 @@ export class WebGLRenderer implements IRenderer {
 	 * 256 x 4 texture: rows = [Red, Green, Blue, RGB combined]
 	 */
 	updateCurveLUT(curve: ToneCurve | null) {
+		const signature = this.buildCurveSignature(curve);
+		if (signature === this.lastCurveSignature) {
+			return;
+		}
 		const gl = this.gl;
 		if (!this.curveLUT) return;
 
@@ -256,12 +228,24 @@ export class WebGLRenderer implements IRenderer {
 			size, 4, 0,
 			gl.RGBA, gl.UNSIGNED_BYTE, data
 		);
+		this.lastCurveSignature = signature;
+	}
+
+	private buildCurveSignature(curve: ToneCurve | null): string {
+		if (!curve) return 'null';
+		const encode = (points: CurvePoint[]) => points.map((p) => `${p.x.toFixed(5)},${p.y.toFixed(5)}`).join(';');
+		return [
+			encode(curve.rgb),
+			encode(curve.red),
+			encode(curve.green),
+			encode(curve.blue),
+		].join('|');
 	}
 
 	/**
 	 * Render the image with current adjustments.
 	 */
-	render(params: AdjustmentParams, curve: ToneCurve) {
+	render(params: AdjustmentParams, curve: ToneCurve, transform: TransformParams) {
 		const gl = this.gl;
 		if (!this.program || !this.hasImage) return;
 
@@ -301,6 +285,21 @@ export class WebGLRenderer implements IRenderer {
 		gl.uniform1f(this.uniforms['u_zoom']!, this.zoom);
 		gl.uniform2f(this.uniforms['u_viewportSize']!, this.viewportWidth, this.viewportHeight);
 		gl.uniform2f(this.uniforms['u_imageSize']!, this.imageWidth, this.imageHeight);
+		gl.uniform1f(this.uniforms['u_displayAspect']!, getEffectiveAspect(this.imageWidth, this.imageHeight, transform));
+
+		const rotationRad = (transform.rotationDeg * Math.PI) / 180;
+		gl.uniform1f(this.uniforms['u_rotationRad']!, rotationRad);
+
+		const crop = transform.cropApplied && transform.cropRect ? transform.cropRect : null;
+		if (crop) {
+			gl.uniform1i(this.uniforms['u_cropEnabled']!, 1);
+			gl.uniform2f(this.uniforms['u_cropOffset']!, crop.x, crop.y);
+			gl.uniform2f(this.uniforms['u_cropScale']!, crop.width, crop.height);
+		} else {
+			gl.uniform1i(this.uniforms['u_cropEnabled']!, 0);
+			gl.uniform2f(this.uniforms['u_cropOffset']!, 0, 0);
+			gl.uniform2f(this.uniforms['u_cropScale']!, 1, 1);
+		}
 
 		// Draw fullscreen quad
 		gl.bindVertexArray(this.vao);

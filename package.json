@@ -10,6 +10,8 @@
 		"check": "svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"docker:up": "./scripts/docker-up.sh",
+		"docker:down": "./scripts/docker-down.sh",
 		"deploy": "vite build && wrangler pages deploy dist --project-name rawviewer --branch main"
 	},
 	"devDependencies": {
