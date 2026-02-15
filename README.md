@@ -1,5 +1,7 @@
 # RAW Viewer
 
+<img width="2494" height="1626" alt="image" src="https://github.com/user-attachments/assets/fca18456-1102-4376-9126-e5506d96f75e" />
+
 RAW Viewer is a web app for editing RAW photos in the browser and exporting them as JPEG/PNG/TIFF.
 The frontend uses Svelte 5 + WebGL2, and RAW decoding is handled by a Go + libraw backend.
 
