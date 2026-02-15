@@ -9,6 +9,7 @@ The frontend uses Svelte 5 + WebGL2, and RAW decoding is handled by a Go + libra
 - Exposure, white balance, contrast, highlights/shadows, saturation, and sharpness controls
 - Tone curve editor (RGB / R / G / B)
 - Rotation, crop, and auto-adjust
+- Before/after comparison slider with draggable split bar
 - Histogram display
 - Export size controls with aspect ratio preservation
 - JPEG / PNG / TIFF export
@@ -87,6 +88,7 @@ Request headers:
 - RAW decoding is server-side, so large files can take time.
 - Preview uses reduced-resolution decode for responsiveness; export uses full-resolution decode.
 - TIFF export goes through a pixel buffer path and can be slower than JPEG/PNG.
+- Before/after compare is hidden while crop edit mode is active to avoid interaction conflicts.
 
 ## License
 

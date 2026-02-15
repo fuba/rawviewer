@@ -31,5 +31,6 @@
 - [x] デコード timeout / abort 対応
 - [x] 連続操作時の再描画間引き
 - [x] Open / Export 進捗バー
+- [x] Before/After 比較バー（ドラッグ分割）
 - [x] Docker Compose 開発環境の整備
 - [x] ポート自動探索 (API) + WEB 5173 固定

@@ -104,6 +104,12 @@
 	<div class="toolbar-left">
 		<button class="open-btn" onclick={openFile} disabled={imageState.loading}>Open</button>
 		<button onclick={onexport} disabled={!imageState.rawImage || imageState.loading}>Export</button>
+		<button
+			onclick={() => imageState.beforeAfterEnabled = !imageState.beforeAfterEnabled}
+			disabled={!imageState.rawImage || imageState.cropMode || imageState.loading}
+		>
+			{imageState.beforeAfterEnabled ? 'Hide Compare' : 'Before/After'}
+		</button>
 		<input
 			bind:this={fileInput}
 			type="file"

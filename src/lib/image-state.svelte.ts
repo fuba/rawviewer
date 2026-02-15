@@ -11,6 +11,7 @@ import {
 	defaultToneCurve,
 	defaultTransform,
 } from './types';
+import { clampBeforeAfterSplit } from './viewer/before-after';
 
 // Reactive image state using Svelte 5 runes
 // This module holds the central state shared across components.
@@ -29,6 +30,8 @@ let _filename: string = $state('');
 let _taskKind: TaskKind = $state(null);
 let _taskProgress: number = $state(0);
 let _taskMessage: string = $state('');
+let _beforeAfterEnabled: boolean = $state(false);
+let _beforeAfterSplit: number = $state(0.5);
 
 function clampProgress(value: number): number {
 	if (!Number.isFinite(value)) return 0;
@@ -78,6 +81,12 @@ export const imageState = {
 	get taskMessage() { return _taskMessage; },
 	set taskMessage(v: string) { _taskMessage = v; },
 
+	get beforeAfterEnabled() { return _beforeAfterEnabled; },
+	set beforeAfterEnabled(v: boolean) { _beforeAfterEnabled = v; },
+
+	get beforeAfterSplit() { return _beforeAfterSplit; },
+	set beforeAfterSplit(v: number) { _beforeAfterSplit = clampBeforeAfterSplit(v); },
+
 	beginTask(kind: Exclude<TaskKind, null>, message = '') {
 		_taskKind = kind;
 		_taskProgress = 0;
@@ -115,5 +124,7 @@ export const imageState = {
 		_taskKind = null;
 		_taskProgress = 0;
 		_taskMessage = '';
+		_beforeAfterEnabled = false;
+		_beforeAfterSplit = 0.5;
 	},
 };

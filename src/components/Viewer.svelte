@@ -6,16 +6,25 @@
 	import { PanZoomController } from '../lib/renderer/pan-zoom';
 	import { exportCanvasImage, exportImage, exportPixels } from '../lib/exporter/exporter';
 	import CropOverlay from './CropOverlay.svelte';
-	import type { CropRect, ExportOptions, TransformParams } from '../lib/types';
+	import {
+		defaultAdjustments,
+		defaultToneCurve,
+		type CropRect,
+		type ExportOptions,
+		type TransformParams,
+	} from '../lib/types';
 	import { getEffectiveImageSize, getRotatedBounds } from '../lib/transform/geometry';
 	import { resolveExportSize } from '../lib/exporter/size';
 	import { decodeRawFile, type DecodeProgress } from '../lib/raw-decoder/decoder';
 	import { resolvePreviewPixelRatio } from '../lib/renderer/preview-quality';
 	import { Canvas2DRenderer } from '../lib/renderer/canvas2d-renderer';
+	import { resolveBeforeAfterSplitFromPointer } from '../lib/viewer/before-after';
 
 	let containerEl: HTMLDivElement;
 	let canvasEl: HTMLCanvasElement;
+	let beforeCanvasEl: HTMLCanvasElement;
 	let renderer: IRenderer | null = null;
+	let beforeRenderer: IRenderer | null = null;
 	let panZoom: PanZoomController | null = null;
 	let viewPan = $state({ x: 0, y: 0 });
 	let viewZoom = $state(1);
@@ -26,6 +35,10 @@
 	let lastRenderedParamSignature = '';
 	const PARAM_RENDER_IDLE_MS = 1000;
 	const EXPORT_DECODE_WEIGHT = 0.72;
+	let compareDragging = $state(false);
+	let activeComparePointerId: number | null = null;
+	const BEFORE_ADJUSTMENTS = defaultAdjustments();
+	const BEFORE_CURVE = defaultToneCurve();
 
 	// Track whether image has been uploaded (avoid re-uploading on every adjustment)
 	let uploadedImageRef: unknown = null;
@@ -42,6 +55,43 @@
 		return transform;
 	}
 
+	function isBeforeAfterVisible(): boolean {
+		return Boolean(imageState.rawImage) && imageState.beforeAfterEnabled && !imageState.cropMode;
+	}
+
+	function compareWidthPercent(): string {
+		return `${(imageState.beforeAfterSplit * 100).toFixed(2)}%`;
+	}
+
+	function updateCompareSplit(clientX: number): void {
+		if (!containerEl) return;
+		const rect = containerEl.getBoundingClientRect();
+		imageState.beforeAfterSplit = resolveBeforeAfterSplitFromPointer(clientX, rect.left, rect.width);
+	}
+
+	function startCompareDrag(event: PointerEvent): void {
+		if (!isBeforeAfterVisible()) return;
+		event.preventDefault();
+		event.stopPropagation();
+		compareDragging = true;
+		activeComparePointerId = event.pointerId;
+		updateCompareSplit(event.clientX);
+	}
+
+	function moveCompareDrag(event: PointerEvent): void {
+		if (!compareDragging) return;
+		if (activeComparePointerId !== null && event.pointerId !== activeComparePointerId) return;
+		event.preventDefault();
+		updateCompareSplit(event.clientX);
+	}
+
+	function endCompareDrag(event: PointerEvent): void {
+		if (!compareDragging) return;
+		if (activeComparePointerId !== null && event.pointerId !== activeComparePointerId) return;
+		compareDragging = false;
+		activeComparePointerId = null;
+	}
+
 	function syncViewState() {
 		if (!renderer) return;
 		viewPan = renderer.getPan();
@@ -51,7 +101,15 @@
 
 	function renderCurrent() {
 		if (!renderer || !imageState.rawImage) return;
-		renderer.render(imageState.adjustments, imageState.toneCurve, getRenderTransform());
+		const transform = getRenderTransform();
+		renderer.render(imageState.adjustments, imageState.toneCurve, transform);
+		if (beforeRenderer) {
+			const pan = renderer.getPan();
+			const zoom = renderer.getZoom();
+			beforeRenderer.setPan(pan.x, pan.y);
+			beforeRenderer.setZoom(zoom);
+			beforeRenderer.render(BEFORE_ADJUSTMENTS, BEFORE_CURVE, transform);
+		}
 		lastRenderedParamSignature = buildParamSignature();
 		syncViewState();
 	}
@@ -80,7 +138,10 @@
 
 	onMount(() => {
 		renderer = createRenderer(canvasEl);
-		imageState.renderBackend = renderer instanceof Canvas2DRenderer ? 'canvas2d' : 'webgl';
+		beforeRenderer = createRenderer(beforeCanvasEl);
+		imageState.renderBackend = (renderer instanceof Canvas2DRenderer || beforeRenderer instanceof Canvas2DRenderer)
+			? 'canvas2d'
+			: 'webgl';
 		panZoom = new PanZoomController(canvasEl, renderer);
 
 		panZoom.onRender(() => {
@@ -113,6 +174,7 @@
 				window.removeEventListener('export-image', handleExport);
 				observer.disconnect();
 				panZoom?.dispose();
+				beforeRenderer?.dispose();
 				renderer?.dispose();
 				imageState.renderBackend = null;
 			};
@@ -140,14 +202,19 @@
 	}
 
 	function resizeCanvas() {
-		if (!containerEl || !canvasEl) return;
+		if (!containerEl || !canvasEl || !beforeCanvasEl) return;
 		const rect = containerEl.getBoundingClientRect();
 		const renderDpr = resolvePreviewPixelRatio(devicePixelRatio, previewInteractive);
 		canvasEl.width = Math.max(1, Math.round(rect.width * renderDpr));
 		canvasEl.height = Math.max(1, Math.round(rect.height * renderDpr));
 		canvasEl.style.width = `${rect.width}px`;
 		canvasEl.style.height = `${rect.height}px`;
+		beforeCanvasEl.width = canvasEl.width;
+		beforeCanvasEl.height = canvasEl.height;
+		beforeCanvasEl.style.width = canvasEl.style.width;
+		beforeCanvasEl.style.height = canvasEl.style.height;
 		renderer?.setViewport(canvasEl.width, canvasEl.height);
+		beforeRenderer?.setViewport(beforeCanvasEl.width, beforeCanvasEl.height);
 		updateCropImageRect();
 	}
 
@@ -271,10 +338,11 @@
 
 	// Upload image when rawImage changes
 	$effect(() => {
-		if (!renderer) return;
+		if (!renderer || !beforeRenderer) return;
 		const img = imageState.rawImage;
 		if (img && img !== uploadedImageRef) {
 			renderer.uploadImage(img);
+			beforeRenderer.uploadImage(img);
 			uploadedImageRef = img;
 			panZoom?.resetView();
 		}
@@ -303,6 +371,12 @@
 	});
 </script>
 
+<svelte:window
+	onpointermove={moveCompareDrag}
+	onpointerup={endCompareDrag}
+	onpointercancel={endCompareDrag}
+/>
+
 <div class="viewer-container" bind:this={containerEl}>
 	{#if !imageState.rawImage && !imageState.loading}
 		<div class="empty-state">
@@ -311,6 +385,24 @@
 		</div>
 	{/if}
 	<canvas bind:this={canvasEl} class:has-image={imageState.rawImage && !imageState.cropMode}></canvas>
+	<div class="before-layer" class:visible={isBeforeAfterVisible()} style:width={compareWidthPercent()}>
+		<canvas bind:this={beforeCanvasEl}></canvas>
+	</div>
+	{#if isBeforeAfterVisible()}
+		<div class="compare-divider" style:left={compareWidthPercent()}>
+			<div class="compare-line"></div>
+			<button
+				type="button"
+				class="compare-handle"
+				aria-label="Drag before/after divider"
+				onpointerdown={startCompareDrag}
+			>
+				↔
+			</button>
+		</div>
+		<span class="compare-label compare-label-before">Before</span>
+		<span class="compare-label compare-label-after">After</span>
+	{/if}
 	{#if imageState.rawImage && imageState.cropMode && cropImageRect}
 		<CropOverlay
 			imageRect={cropImageRect}
@@ -332,6 +424,25 @@
 	}
 
 	canvas {
+		position: absolute;
+		top: 0;
+		left: 0;
+	}
+
+	.before-layer {
+		position: absolute;
+		inset: 0 auto 0 0;
+		width: 0;
+		overflow: hidden;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.before-layer.visible {
+		opacity: 1;
+	}
+
+	.before-layer canvas {
 		position: absolute;
 		top: 0;
 		left: 0;
@@ -359,5 +470,75 @@
 	.hint {
 		font-size: 12px;
 		opacity: 0.6;
+	}
+
+	.compare-divider {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 0;
+		transform: translateX(-50%);
+		pointer-events: none;
+		z-index: 5;
+	}
+
+	.compare-line {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 50%;
+		width: 2px;
+		transform: translateX(-50%);
+		background: rgba(255, 255, 255, 0.85);
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+	}
+
+	.compare-handle {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 34px;
+		height: 34px;
+		border-radius: 999px;
+		border: 1px solid rgba(255, 255, 255, 0.5);
+		background: rgba(20, 20, 20, 0.75);
+		color: #fff;
+		font-size: 14px;
+		font-weight: 700;
+		display: grid;
+		place-items: center;
+		padding: 0;
+		pointer-events: auto;
+		cursor: ew-resize;
+		user-select: none;
+		touch-action: none;
+	}
+
+	.compare-handle:hover,
+	.compare-handle:active {
+		background: rgba(20, 20, 20, 0.9);
+	}
+
+	.compare-label {
+		position: absolute;
+		top: 10px;
+		padding: 3px 8px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		color: #fff;
+		background: rgba(0, 0, 0, 0.5);
+		pointer-events: none;
+		z-index: 5;
+	}
+
+	.compare-label-before {
+		left: 10px;
+	}
+
+	.compare-label-after {
+		right: 10px;
 	}
 </style>
