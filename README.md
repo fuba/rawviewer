@@ -1,64 +1,64 @@
 # RAW Viewer
 
-RAW 画像をブラウザで編集し、JPEG/PNG/TIFF で書き出すための Web アプリです。  
-フロントエンドは Svelte 5 + WebGL2、RAW デコードは Go + libraw バックエンドで処理します。
+RAW Viewer is a web app for editing RAW photos in the browser and exporting them as JPEG/PNG/TIFF.
+The frontend uses Svelte 5 + WebGL2, and RAW decoding is handled by a Go + libraw backend.
 
-## 主な機能
+## Features
 
-- RAW 読み込み（CR2/CR3/NEF/ARW/DNG など）
-- 露出・WB・コントラスト・ハイライト/シャドウ・彩度・シャープネス調整
-- トーンカーブ編集（RGB / R / G / B）
-- 回転、クロップ、自動補正
-- ヒストグラム表示
-- Export 時の出力サイズ指定（縦横比保持）
-- JPEG / PNG / TIFF 書き出し
-- Open / Export の進捗バー表示
-- WebGL 非対応環境では Canvas2D フォールバック
+- RAW import (CR2/CR3/NEF/ARW/DNG and others)
+- Exposure, white balance, contrast, highlights/shadows, saturation, and sharpness controls
+- Tone curve editor (RGB / R / G / B)
+- Rotation, crop, and auto-adjust
+- Histogram display
+- Export size controls with aspect ratio preservation
+- JPEG / PNG / TIFF export
+- Progress bar for Open / Export tasks
+- Canvas2D fallback when WebGL is unavailable
 
-## アーキテクチャ
+## Architecture
 
 - Frontend: Svelte 5 + TypeScript + Vite
-- Rendering: WebGL2（必要に応じて Canvas2D）
+- Rendering: WebGL2 (with Canvas2D fallback)
 - Backend: Go + libraw
-- Transport: `POST /api/decode` でバイナリエンベロープを返却
-- Runtime: Docker Compose（frontend/backend の 2 サービス）
+- Transport: `POST /api/decode` returns a binary envelope
+- Runtime: Docker Compose with two services (`frontend` / `backend`)
 
-## 必要環境
+## Requirements
 
 - Docker
-- Docker Compose v2（`docker compose`）
+- Docker Compose v2 (`docker compose`)
 
-## 起動（推奨: Docker）
+## Run (Recommended: Docker)
 
 ```bash
 ./scripts/docker-up.sh
 ```
 
-このスクリプトは以下を行います。
+This script:
 
-- WEB ポートを `5173` で固定
-- API ポートは `8080` から空きポートを自動探索
-- `.env.compose` を生成して `docker compose up -d --build` を実行
+- Fixes the web port to `5173`
+- Finds a free API port starting from `8080`
+- Generates `.env.compose` and runs `docker compose up -d --build`
 
-起動後:
+After startup:
 
 - Frontend: `http://localhost:5173`
 - Backend health: `http://localhost:<API_PORT>/api/healthz`
 
-停止:
+Stop:
 
 ```bash
 ./scripts/docker-down.sh
 ```
 
-## ログ
+## Logs
 
-コンテナ内で以下にログ出力します。
+Logs are written inside containers:
 
 - frontend: `/tmp/rawviewer-frontend.log`
 - backend: `/tmp/rawviewer-backend.log`
 
-## 開発コマンド
+## Development Commands
 
 ```bash
 npm test
@@ -70,24 +70,24 @@ npm run build
 
 ### `GET /api/healthz`
 
-ヘルスチェック。`ok` を返します。
+Health check endpoint. Returns `ok`.
 
 ### `POST /api/decode`
 
-RAW バイト列を受け取り、デコード済みピクセルとメタデータをバイナリ形式で返します。
+Accepts RAW bytes and returns decoded pixels + metadata in a binary format.
 
-リクエストヘッダ:
+Request headers:
 
 - `Content-Type: application/octet-stream`
 - `X-Filename: <optional>`
 - `X-Max-Dimension: <optional>`
 
-## 既知の注意点
+## Known Notes
 
-- RAW デコードはサーバサイド処理のため、ファイルサイズによって時間がかかります。
-- プレビューは軽量化のため低解像度デコードを使い、Export 時にフル解像度デコードします。
-- TIFF Export はピクセル経路で処理するため、JPEG/PNG より時間がかかる場合があります。
+- RAW decoding is server-side, so large files can take time.
+- Preview uses reduced-resolution decode for responsiveness; export uses full-resolution decode.
+- TIFF export goes through a pixel buffer path and can be slower than JPEG/PNG.
 
-## ライセンス
+## License
 
 CC0 1.0 Universal
