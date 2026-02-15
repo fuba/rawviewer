@@ -1,5 +1,5 @@
 import type { ExportOptions } from '../types';
-import type { WebGLRenderer } from '../renderer/webgl-renderer';
+import type { IRenderer } from '../renderer/renderer-interface';
 import { exportJpegPng } from './jpeg-png';
 import { exportTiff } from './tiff';
 
@@ -7,7 +7,7 @@ import { exportTiff } from './tiff';
  * Export the current rendered image.
  */
 export async function exportImage(
-	renderer: WebGLRenderer,
+	renderer: IRenderer,
 	options: ExportOptions
 ): Promise<void> {
 	const canvas = renderer.getCanvas();

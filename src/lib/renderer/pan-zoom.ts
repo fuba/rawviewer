@@ -1,17 +1,17 @@
-import type { WebGLRenderer } from './webgl-renderer';
+import type { IRenderer } from './renderer-interface';
 
 /**
  * Handles mouse/touch pan and zoom interactions on the canvas.
  */
 export class PanZoomController {
-	private renderer: WebGLRenderer;
+	private renderer: IRenderer;
 	private canvas: HTMLCanvasElement;
 
 	private isDragging = false;
 	private lastX = 0;
 	private lastY = 0;
 
-	constructor(canvas: HTMLCanvasElement, renderer: WebGLRenderer) {
+	constructor(canvas: HTMLCanvasElement, renderer: IRenderer) {
 		this.canvas = canvas;
 		this.renderer = renderer;
 

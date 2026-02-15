@@ -1,8 +1,9 @@
 import type { RawImageData, AdjustmentParams, ToneCurve, CurvePoint } from '../types';
+import type { IRenderer } from './renderer-interface';
 import vertexSrc from './shaders/vertex.glsl?raw';
 import fragmentSrc from './shaders/adjust.glsl?raw';
 
-export class WebGLRenderer {
+export class WebGLRenderer implements IRenderer {
 	private gl: WebGL2RenderingContext;
 	private program: WebGLProgram | null = null;
 	private imageTexture: WebGLTexture | null = null;

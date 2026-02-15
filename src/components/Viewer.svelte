@@ -1,21 +1,22 @@
 <script lang="ts">
 	import { imageState } from '../lib/image-state.svelte';
 	import { onMount } from 'svelte';
-	import { WebGLRenderer } from '../lib/renderer/webgl-renderer';
+	import { createRenderer } from '../lib/renderer/create-renderer';
+	import type { IRenderer } from '../lib/renderer/renderer-interface';
 	import { PanZoomController } from '../lib/renderer/pan-zoom';
 	import { exportImage } from '../lib/exporter/exporter';
 	import type { ExportOptions } from '../lib/types';
 
 	let containerEl: HTMLDivElement;
 	let canvasEl: HTMLCanvasElement;
-	let renderer: WebGLRenderer | null = null;
+	let renderer: IRenderer | null = null;
 	let panZoom: PanZoomController | null = null;
 
 	// Track whether image has been uploaded (avoid re-uploading on every adjustment)
 	let uploadedImageRef: unknown = null;
 
 	onMount(() => {
-		renderer = new WebGLRenderer(canvasEl);
+		renderer = createRenderer(canvasEl);
 		panZoom = new PanZoomController(canvasEl, renderer);
 
 		panZoom.onRender(() => {
